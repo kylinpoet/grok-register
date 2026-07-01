@@ -149,3 +149,13 @@ GUI 数量控件可能有上限。CLI 模式直接读取 `config.json` 中的 `r
 ├── requirements.txt       # Python 依赖
 └── README.md
 ```
+
+## Star History
+
+<a href="https://www.star-history.com/AaronL725/grok-register#history">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=AaronL725/grok-register&type=Date&theme=dark" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=AaronL725/grok-register&type=Date" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=AaronL725/grok-register&type=Date" />
+ </picture>
+</a>
