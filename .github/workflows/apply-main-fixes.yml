@@ -1,0 +1,174 @@
+name: Temporary Main Fixes
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/apply-main-fixes-trigger.txt
+
+permissions:
+  contents: write
+
+jobs:
+  apply-fixes:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply minimal fixes as separate commits
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          commit_if_changed() {
+            local message="$1"
+            shift
+            git add "$@"
+            if git diff --cached --quiet; then
+              echo "No changes for: $message"
+              git reset --quiet
+            else
+              git diff --cached --check
+              git commit -m "$message"
+            fi
+          }
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f"missing expected block: {label}")
+              return text.replace(old, new, 1)
+
+          p = Path("grok_register_ttk.py")
+          s = p.read_text(encoding="utf-8-sig")
+          s = replace_once(
+              s,
+              '''    "cloudflare_auth_mode": "bearer",\n    "cloudflare_path_domains": "/domains",\n    "cloudflare_path_accounts": "/accounts",\n    "cloudflare_path_token": "/token",\n    "cloudflare_path_messages": "/messages",''',
+              '''    "cloudflare_auth_mode": "none",\n    "cloudflare_path_domains": "/api/domains",\n    "cloudflare_path_accounts": "/api/new_address",\n    "cloudflare_path_token": "/api/token",\n    "cloudflare_path_messages": "/api/mails",''',
+              "DEFAULT_CONFIG cloudflare defaults",
+          )
+          s = replace_once(
+              s,
+              'return str(config.get("cloudflare_auth_mode", "bearer") or "bearer").lower()',
+              'return str(config.get("cloudflare_auth_mode", "none") or "none").lower()',
+              "cloudflare auth mode getter default",
+          )
+          s = replace_once(
+              s,
+              'self.cloudflare_auth_mode_var = tk.StringVar(value=config.get("cloudflare_auth_mode", "bearer"))',
+              'self.cloudflare_auth_mode_var = tk.StringVar(value=config.get("cloudflare_auth_mode", "none"))',
+              "GUI cloudflare auth mode default",
+          )
+          s = replace_once(
+              s,
+              '''                    config.get("cloudflare_path_domains", "/domains"),\n                    config.get("cloudflare_path_accounts", "/accounts"),\n                    config.get("cloudflare_path_token", "/token"),\n                    config.get("cloudflare_path_messages", "/messages"),''',
+              '''                    config.get("cloudflare_path_domains", "/api/domains"),\n                    config.get("cloudflare_path_accounts", "/api/new_address"),\n                    config.get("cloudflare_path_token", "/api/token"),\n                    config.get("cloudflare_path_messages", "/api/mails"),''',
+              "GUI cloudflare path defaults",
+          )
+          s = replace_once(
+              s,
+              'config["cloudflare_auth_mode"] = self.cloudflare_auth_mode_var.get().strip() or "bearer"',
+              'config["cloudflare_auth_mode"] = self.cloudflare_auth_mode_var.get().strip() or "none"',
+              "GUI save cloudflare auth fallback",
+          )
+          p.write_text(s, encoding="utf-8-sig")
+          PY
+          commit_if_changed "fix(cloudflare): keep temp mail defaults" grok_register_ttk.py
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f"missing expected block: {label}")
+              return text.replace(old, new, 1)
+
+          p = Path("grok_register_ttk.py")
+          s = p.read_text(encoding="utf-8-sig")
+          s = replace_once(
+              s,
+              'raise Exception(f"Cloudflare /api/new_address 返回非JSON: {resp.text[:300]}")',
+              'raise Exception(f"Cloudflare {path} 返回非JSON: {resp.text[:300]}")',
+              "Cloudflare non-json create error path",
+          )
+          s = replace_once(
+              s,
+              'raise Exception(f"Cloudflare /api/new_address 缺少 address/jwt: {data}")',
+              'raise Exception(f"Cloudflare {path} 缺少 address/jwt: {data}")',
+              "Cloudflare missing address/jwt create error path",
+          )
+          p.write_text(s, encoding="utf-8-sig")
+          PY
+          commit_if_changed "fix(cloudflare): report configured create path" grok_register_ttk.py
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f"missing expected block: {label}")
+              return text.replace(old, new, 1)
+
+          p = Path("grok_register_ttk.py")
+          s = p.read_text(encoding="utf-8-sig")
+          old = '''    # 兜底：旧版全量保存接口\n    current = {}\n    try:\n        resp = http_get(f"{base}/tokens", headers=headers, params=query, timeout=20, proxies={})\n        if resp.status_code == 200:\n            payload = resp.json()\n            current = payload.get("tokens", {}) if isinstance(payload, dict) else {}\n    except Exception:\n        current = {}\n    if not isinstance(current, dict):\n        current = {}\n    pool = current.get(pool_name)\n    if not isinstance(pool, list):\n        pool = []\n    existing = set()\n    for item in pool:\n        if isinstance(item, str):\n            existing.add(_normalize_sso_token(item))\n        elif isinstance(item, dict):\n            existing.add(_normalize_sso_token(item.get("token", "")))\n    if token not in existing:\n        pool.append({"token": token, "tags": ["auto-register"], "note": email})\n    current[pool_name] = pool\n    resp2 = http_post(f"{base}/tokens", headers=headers, params=query, json=current, timeout=30, proxies={})\n    resp2.raise_for_status()\n    if log_callback:\n        log_callback(f"[+] 已写入 grok2api 远端池: {pool_name} ({base}/tokens)")\n    return True\n'''
+          new = '''    # 兜底：旧版全量保存接口\n    current = {}\n    fallback_base = api_bases[0] if api_bases else base\n    for api_base in api_bases or [base]:\n        try:\n            resp = http_get(f"{api_base}/tokens", headers=headers, params=query, timeout=20, proxies={})\n            if resp.status_code == 200:\n                payload = resp.json()\n                current = payload.get("tokens", {}) if isinstance(payload, dict) else {}\n                fallback_base = api_base\n                break\n        except Exception:\n            continue\n    if not isinstance(current, dict):\n        current = {}\n    pool = current.get(pool_name)\n    if not isinstance(pool, list):\n        pool = []\n    existing = set()\n    for item in pool:\n        if isinstance(item, str):\n            existing.add(_normalize_sso_token(item))\n        elif isinstance(item, dict):\n            existing.add(_normalize_sso_token(item.get("token", "")))\n    if token not in existing:\n        pool.append({"token": token, "tags": ["auto-register"], "note": email})\n    current[pool_name] = pool\n    save_errors = []\n    save_bases = []\n    for item in [fallback_base, *(api_bases or [base])]:\n        if item and item not in save_bases:\n            save_bases.append(item)\n    for api_base in save_bases:\n        try:\n            resp2 = http_post(f"{api_base}/tokens", headers=headers, params=query, json=current, timeout=30, proxies={})\n            resp2.raise_for_status()\n            if log_callback:\n                log_callback(f"[+] 已写入 grok2api 远端池: {pool_name} ({api_base}/tokens)")\n            return True\n        except Exception as save_exc:\n            save_errors.append(f"{api_base}/tokens: {save_exc}")\n    raise RuntimeError(f"grok2api 远端 /tokens 全量模式写入失败: {'; '.join(save_errors)}")\n'''
+          s = replace_once(s, old, new, "grok2api /tokens fallback block")
+          p.write_text(s, encoding="utf-8-sig")
+          PY
+          commit_if_changed "fix(grok2api): try admin api tokens fallback" grok_register_ttk.py
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f"missing expected block: {label}")
+              return text.replace(old, new, 1)
+
+          p = Path("tests/test_cloudflare_admin_api.py")
+          s = p.read_text(encoding="utf-8")
+          s = replace_once(
+              s,
+              '''    def setUp(self):\n        self.original_config = app.config.copy()\n\n    def tearDown(self):\n        app.config = self.original_config\n''',
+              '''    def setUp(self):\n        self.original_config = app.config.copy()\n        self.original_cf_domain_index = app._cf_domain_index\n        app._cf_domain_index = 0\n\n    def tearDown(self):\n        app.config = self.original_config\n        app._cf_domain_index = self.original_cf_domain_index\n''',
+              "Cloudflare test setup/teardown",
+          )
+          marker = '''    def test_app_uses_admin_new_address_with_x_admin_auth(self):\n'''
+          default_test = '''    def test_default_config_keeps_cloudflare_temp_email_new_address(self):\n        app.config = app.DEFAULT_CONFIG.copy()\n        captured = {}\n\n        def fake_post(url, **kwargs):\n            captured["url"] = url\n            captured.update(kwargs)\n            return DummyResponse({"address": "anon@example.com", "jwt": "default-jwt"})\n\n        with patch.object(app, "http_post", side_effect=fake_post):\n            address, jwt = app.cloudflare_create_temp_address("https://temp-mail.example.com")\n\n        self.assertEqual(address, "anon@example.com")\n        self.assertEqual(jwt, "default-jwt")\n        self.assertEqual(captured["url"], "https://temp-mail.example.com/api/new_address")\n        self.assertEqual(captured["json"], {})\n        self.assertEqual(captured["headers"], {"Content-Type": "application/json"})\n\n'''
+          if "test_default_config_keeps_cloudflare_temp_email_new_address" not in s:
+              s = replace_once(s, marker, default_test + marker, "default-config Cloudflare test")
+          p.write_text(s, encoding="utf-8")
+          PY
+          commit_if_changed "test(cloudflare): cover default temp mail path" tests/test_cloudflare_admin_api.py
+
+          python - <<'PY'
+          from pathlib import Path
+
+          def replace_once(text, old, new, label):
+              if old not in text:
+                  raise SystemExit(f"missing expected block: {label}")
+              return text.replace(old, new, 1)
+
+          p = Path("tests/test_grok2api_remote_pool.py")
+          s = p.read_text(encoding="utf-8")
+          insert_before = '''\n\nif __name__ == "__main__":\n    unittest.main()'''
+          new_test = '''\n    def test_remote_pool_full_save_fallback_tries_admin_api_tokens_path(self):\n        app.config.update({\n            "grok2api_remote_base": "https://grok.example.com",\n            "grok2api_remote_app_key": "app-secret",\n            "grok2api_pool_name": "ssoBasic",\n        })\n        get_calls = []\n        post_calls = []\n\n        def fake_post(url, **kwargs):\n            post_calls.append((url, kwargs))\n            if url.endswith("/tokens/add"):\n                return DummyResponse(status_code=404)\n            if url == "https://grok.example.com/admin/api/tokens":\n                return DummyResponse({"status": "success"})\n            return DummyResponse(status_code=404)\n\n        def fake_get(url, **kwargs):\n            get_calls.append((url, kwargs))\n            if url == "https://grok.example.com/admin/api/tokens":\n                return DummyResponse({"tokens": {"ssoBasic": []}})\n            return DummyResponse(status_code=404)\n\n        with patch.object(app, "http_post", side_effect=fake_post), \\\n                patch.object(app, "http_get", side_effect=fake_get):\n            ok = app.add_token_to_grok2api_remote_pool("sso=fallback123", email="a@example.com")\n\n        self.assertTrue(ok)\n        self.assertEqual([url for url, _ in get_calls], [\n            "https://grok.example.com/tokens",\n            "https://grok.example.com/admin/api/tokens",\n        ])\n        self.assertEqual(post_calls[-1][0], "https://grok.example.com/admin/api/tokens")\n        self.assertEqual(post_calls[-1][1]["json"], {\n            "ssoBasic": [{"token": "fallback123", "tags": ["auto-register"], "note": "a@example.com"}],\n        })\n'''
+          if "test_remote_pool_full_save_fallback_tries_admin_api_tokens_path" not in s:
+              s = replace_once(s, insert_before, new_test + insert_before, "grok2api /tokens fallback test")
+          p.write_text(s, encoding="utf-8")
+          PY
+          commit_if_changed "test(grok2api): cover admin api tokens fallback" tests/test_grok2api_remote_pool.py
+
+          git rm .github/workflows/apply-main-fixes.yml .github/apply-main-fixes-trigger.txt
+          git commit -m "chore: remove temporary main fix workflow"
+          git push origin HEAD:main
