@@ -1,18 +1,18 @@
 name: Temporary audit fixes
 
 on:
+  workflow_dispatch:
   push:
     branches: [main]
-  workflow_dispatch:
   issues:
-    types: [edited]
+    types: [edited, opened, reopened]
 
 permissions:
   contents: write
 
 jobs:
   apply:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event.issue.number == 7
+    if: github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event.issue.number == 7
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
