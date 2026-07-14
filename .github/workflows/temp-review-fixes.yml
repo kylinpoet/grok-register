@@ -11,13 +11,15 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Repair review patch GUI replacement
+        run: python tools/fix_review_patch_gui_replace.py
       - name: Apply review fixes
         run: python tools/apply_review_fixes.py
       - name: Commit and cleanup
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git rm -f tools/apply_review_fixes.py .github/workflows/temp-review-fixes.yml
+          git rm -f tools/apply_review_fixes.py tools/fix_review_patch_gui_replace.py .github/workflows/temp-review-fixes.yml
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to commit"
